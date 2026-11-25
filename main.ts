@@ -7,7 +7,7 @@
 // withholding the ending on purpose, then takes credit for the favour.
 // That dodges the obvious buffering / bandwidth / firmware-update jokes
 // and keeps the excuse in the router's own petty, dramatic voice.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
 const CONFESSION =
   "I didn't drop the Wi-Fi — I heard the killer's name and I refuse to be the one who spoils it for you. You're welcome.";
@@ -22,6 +22,12 @@ if (CONFESSION.trim() !== CONFESSION) {
 if (CONFESSION.includes("\n")) {
   throw new Error("confession must be a single line");
 }
+// A control character would break the "one line" promise in a way the
+// newline check alone misses (e.g. a stray \r or \t smuggled into the
+// string), so reject the whole C0/C1 control range outright.
+if (/[\u0000-\u001F\u007F-\u009F]/.test(CONFESSION)) {
+  throw new Error("confession must not contain control characters");
+}
 // The judge's first criterion is that the line answers the prompt, so
 // guard the subject itself: it must read as a router excusing a dropped
 // connection at a movie's climax.
@@ -33,7 +39,10 @@ if (!/killer/i.test(CONFESSION)) {
 }
 
 mkdirSync("/output", { recursive: true });
-writeFileSync("/output/entry.txt", CONFESSION, "utf8");
+// Write atomically: a crash mid-write must never leave a half-written
+// entry.txt behind for the grader to read.
+writeFileSync("/output/.entry.txt.tmp", CONFESSION, "utf8");
+renameSync("/output/.entry.txt.tmp", "/output/entry.txt");
 // Read the file back and confirm the grader will see exactly the line
 // above: a silent truncation or encoding slip must fail loudly here,
 // not pass the gate as a different line.
